@@ -1,0 +1,58 @@
+(ns jxautorec
+  (require (file :joxify)
+           (erlang :as erl :joxify)
+           (joxa-lists :as jxl)
+           lists io
+           (io_lib :as iol)
+           erl_scan)
+  (use joxa-core))
+
+
+(defn+ split-list-at (split-here? tokens curr forms)
+  "Split the list of tokens <tokens> at tokens {:dot lineno}.
+   Call as (split-list-at here? toks [] [])."
+  (case tokens
+    ([] (case curr ([] (lists/reverse forms)) (not-empty (lists/reverse ((lists/reverse curr) . forms)))))
+    ((tok . rest)
+      (if (split-here? tok)
+        (split-list-at split-here? rest [] ((lists/reverse (tok . curr)) . forms))
+        (split-list-at split-here? rest (tok . curr) forms)))))
+
+
+(defmacro split-list-at (matchspec tokens)
+  `(split-list-at (fn (x) (case x (~matchspec :true) (_ :false))) ~tokens [] []))
+
+
+(defn+ parse-record (toks)
+  (let (({:- _} . ({:atom _ :record} . ({_ _ } . ({:atom _ rec-name} . ({_ _ } . ({_ _} . rest)))))) toks)
+    ; a hack follows because I don't know how to make the erlang atom ',' in joxa
+    (let* (fields (split-list-at (fn (x) (erl/== (erl/atom-to-list (erl/element 1 x)) ",")) rest [] []))
+      (rec-name . (lists/map (fn (x) (erl/atom-to-list (erl/element 3 (jxl/hd x)))) fields)))))
+
+
+(defn+ parse-file (fname)
+  "Parse the file <fname>."
+  (let ({:ok content} (file/read-file fname)
+            {:ok tokens _lineno} (erl_scan/string (erl/binary-to-list content)))
+    (let* (record? (fn (x) (case (jxl/hd (jxl/tl x)) ({:atom _ :record} :true) (_ :false)))
+           tok-lists (lists/filter record? (split-list-at {:dot _} tokens)))
+      (file/write-file "token-list" (iol/format "~p" [tok-lists]))
+      (let* (trees (lists/map parse-record/1 tok-lists))
+        (file/write-file "parse-trees" (iol/format "~p" [trees]))
+        trees))))
+
+(defn+ render-record (rec dev joxify)
+  (io/format dev "(ns ~p~n  (use joxa-records))~n~n(defrecord+" [(jxl/hd rec)])
+  (let* (maybe-jox (fn (x) (if joxify (lists/map (fn (c) (if (erl/== c :\_) :\- c)) x) x)))
+    (lists/map (fn (x) (io/format dev " ~s" [(maybe-jox x)])) (jxl/tl rec))
+    (io/format dev ")~n~n" [])))
+
+
+(defn+ generate-rec-def (from-file to-file rec-list joxify)
+  (let* (recs (parse-file from-file)
+         sel-recs (if (erl/== rec-list :all) recs (lists/filter (fn (x) (lists/member (jxl/hd x) rec-list)) recs)))
+    (let ({:ok dev} (file/open to-file [:write]))
+      (lists/map (fn (x) (render-record x dev joxify)) sel-recs)
+      (file/close dev))))
+
+
