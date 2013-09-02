@@ -58,7 +58,7 @@
 (defn+ main(lst)
   (case lst
     ([from-file to-file rec-list-str joxify-str]
-      (let* (rec-list (case rec-list-str ("all" :all) (other [other]))
+      (let* (rec-list (case rec-list-str ("all" :all) (other [(erl/list-to-atom other)]))
              joxify (case joxify-str ("true" :true) ("false" :false)))
         (generate from-file to-file rec-list joxify)))
     (other (erl/throw "Error in calling main(): requires from-file to-file rec-list joxify"))))
