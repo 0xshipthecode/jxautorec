@@ -34,12 +34,11 @@
   "Parse the file <fname>."
   (let ({:ok content} (file/read-file fname)
             {:ok tokens _lineno} (erl_scan/string (erl/binary-to-list content)))
+;    (file/write-file "token-list" (iol/format "~p" [tokens])) 
     (let* (record? (fn (x) (case (jxl/hd (jxl/tl x)) ({:atom _ :record} :true) (_ :false)))
            tok-lists (lists/filter record? (split-list-at {:dot _} tokens)))
-      (file/write-file "token-list" (iol/format "~p" [tok-lists]))
-      (let* (trees (lists/map parse-record/1 tok-lists))
-        (file/write-file "parse-trees" (iol/format "~p" [trees]))
-        trees))))
+      (lists/map parse-record/1 tok-lists))))
+
 
 (defn+ render-record (rec dev joxify)
   (io/format dev "(ns ~p~n  (use joxa-records))~n~n(defrecord+" [(jxl/hd rec)])
@@ -48,11 +47,19 @@
     (io/format dev ")~n~n" [])))
 
 
-(defn+ generate-rec-def (from-file to-file rec-list joxify)
+(defn+ generate(from-file to-file rec-list joxify)
   (let* (recs (parse-file from-file)
          sel-recs (if (erl/== rec-list :all) recs (lists/filter (fn (x) (lists/member (jxl/hd x) rec-list)) recs)))
     (let ({:ok dev} (file/open to-file [:write]))
       (lists/map (fn (x) (render-record x dev joxify)) sel-recs)
       (file/close dev))))
 
+
+(defn+ main(lst)
+  (case lst
+    ([from-file to-file rec-list-str joxify-str]
+      (let* (rec-list (case rec-list-str ("all" :all) (other [other]))
+             joxify (case joxify-str ("true" :true) ("false" :false)))
+        (generate from-file to-file rec-list joxify)))
+    (other (erl/throw "Error in calling main(): requires from-file to-file rec-list joxify"))))
 

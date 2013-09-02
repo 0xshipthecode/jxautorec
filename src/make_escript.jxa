@@ -1,0 +1,8 @@
+(require escript file (code :joxify))
+(use joxa-core)
+
+(let* (jxautorec-loc (code/where-is-file "jxautorec.beam"))
+  (let ({:ok beam1} (file/read_file jxautorec-loc))
+    (escript/create "jxautorec" [:shebang {:archive [{"jxautorec.beam" beam1}] []}])))
+
+
