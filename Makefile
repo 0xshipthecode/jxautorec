@@ -12,4 +12,7 @@ escript: src/make_escript.jxa
 
 compile: $(BEAMFILES)
 
+clean:
+	rm ebin/*
+	rm jxautorec
 
