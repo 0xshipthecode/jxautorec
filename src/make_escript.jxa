@@ -1,8 +1,8 @@
-(require escript file (code :joxify))
+(require escript (file :joxify) (code :joxify) lists io filename)
 (use joxa-core)
 
-(let* (jxautorec-loc (code/where-is-file "jxautorec.beam"))
-  (let ({:ok beam1} (file/read_file jxautorec-loc))
-    (escript/create "jxautorec" [:shebang {:archive [{"jxautorec.beam" beam1}] []}])))
-
+(let* (arch-fnames ["jxautorec.beam" "joxa-lists.beam"]
+       arch-paths  (lists/map code/where-is-file/1 arch-fnames)
+       bins    (lists/map (fn (x) (let ({:ok b} (file/read-file x)) {(filename/basename x) b})) arch-paths))
+  (escript/create "jxautorec" [:shebang {:archive bins []}]))
 
