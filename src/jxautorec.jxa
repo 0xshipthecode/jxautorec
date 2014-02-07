@@ -9,10 +9,13 @@
 
 
 (defn+ split-list-at (split-here? tokens curr forms)
-  "Split the list of tokens <tokens> at tokens {:dot lineno}.
+  "Split the list of tokens <tokens> whenever split-here? returns :true.
    Call as (split-list-at here? toks [] [])."
   (case tokens
-    ([] (case curr ([] (lists/reverse forms)) (not-empty (lists/reverse ((lists/reverse curr) . forms)))))
+    ([]
+      (case curr
+        ([]        (lists/reverse forms))
+        (not-empty (lists/reverse ((lists/reverse curr) . forms)))))
     ((tok . rest)
       (if (split-here? tok)
         (split-list-at split-here? rest [] ((lists/reverse (tok . curr)) . forms))
@@ -20,46 +23,49 @@
 
 
 (defmacro split-list-at (matchspec tokens)
+  "Macro that auto-generates a function that splits <tokens> whenever <matchspec> matches the token."
   `(split-list-at (fn (x) (case x (~matchspec :true) (_ :false))) ~tokens [] []))
 
 
 (defn+ parse-record (toks)
+  "Parses the AST <toks> and returns a list containing the record name and all fields.
+   Crashes if the AST does not have correct form."
   (let (({:- _} . ({:atom _ :record} . ({_ _ } . ({:atom _ rec-name} . ({_ _ } . ({_ _} . rest)))))) toks)
-    ; a hack follows because I don't know how to make the erlang atom ',' in joxa
-    (let* (fields (split-list-at (fn (x) (erl/== (erl/atom-to-list (erl/element 1 x)) ",")) rest [] []))
-      (rec-name . (lists/map (fn (x) (erl/atom-to-list (erl/element 3 (jxl/hd x)))) fields)))))
+    (io/format "rec-name ~p~n" [rec-name])
+    (let* (comma      (erl/list-to-atom ",")
+           field-info (split-list-at (fn (x) (erl/== comma (erl/element 1 x))) rest [] [])
+           fields     (lists/map (fn (x) (erl/atom-to-list (erl/element 3 (jxl/hd x)))) field-info))
+      (io/format "fields: ~p~n" [fields])
+      (rec-name . fields))))
 
 
-(defn+ parse-file (fname)
-  "Parse the file <fname>."
-  (let ({:ok content} (file/read-file fname)
-            {:ok tokens _lineno} (erl_scan/string (erl/binary-to-list content)))
-;    (file/write-file "token-list" (iol/format "~p" [tokens])) 
-    (let* (record? (fn (x) (case (jxl/hd (jxl/tl x)) ({:atom _ :record} :true) (_ :false)))
+(defn+ find-records-in-file (fname)
+  "Parse the file <fname> and filter out everything but record definitions."
+  (let ({:ok content}        (file/read-file fname)
+        {:ok tokens _lineno} (erl_scan/string (erl/binary-to-list content)))
+    (file/write-file "tokens" tokens)
+    (let* (record?   (fn (x) (case (lists/nth 2 x) ({:atom _ :record} :true) (_ :false)))
            tok-lists (lists/filter record? (split-list-at {:dot _} tokens)))
       (lists/map parse-record/1 tok-lists))))
 
 
-(defn+ render-record (rec dev joxify)
-  (io/format dev "(ns ~p~n  (use joxa-records))~n~n(defrecord+" [(jxl/hd rec)])
-  (let* (maybe-jox (fn (x) (if joxify (lists/map (fn (c) (if (erl/== c :\_) :\- c)) x) x)))
-    (lists/map (fn (x) (io/format dev " ~s" [(maybe-jox x)])) (jxl/tl rec))
-    (io/format dev ")~n~n" [])))
-
-
-(defn+ generate(from-file to-file rec-list joxify)
-  (let* (recs (parse-file from-file)
-         sel-recs (if (erl/== rec-list :all) recs (lists/filter (fn (x) (lists/member (jxl/hd x) rec-list)) recs)))
-    (let ({:ok dev} (file/open to-file [:write]))
-      (lists/map (fn (x) (render-record x dev joxify)) sel-recs)
-      (file/close dev))))
+(defn+ make-joxa-record (rec-list joxify)
+  "Construct a joxa record definition from the record list <rec-list> as constructed by parse-record."
+  (let* (maybe-joxify (if joxify (fn (x) (lists/map (fn (c) (if (erl/== c :\_) :\- c)) x)) (fn (x) x)))
+    (lists/flatten [
+      (iol/format "(ns ~p~n  (use joxa-records))~n~n(defrecord+" [(jxl/hd rec-list)])
+      (lists/map (fn (x) [" " (maybe-joxify x)]) (jxl/tl rec-list)) 
+      ")\n\n"])))
 
 
 (defn+ main(lst)
   (case lst
-    ([from-file to-file rec-list-str joxify-str]
-      (let* (rec-list (case rec-list-str ("all" :all) (other [(erl/list-to-atom other)]))
-             joxify (case joxify-str ("true" :true) ("false" :false)))
-        (generate from-file to-file rec-list joxify)))
-    (other (erl/throw "Error in calling main(): requires from-file to-file rec-list joxify"))))
+    ([from-file to-file rec-name-or-all joxify-str]
+      (let* (rec-atom  (case rec-name-or-all ("all" :all) (rec-name [(erl/list-to-atom rec-name)]))
+             joxify    (case joxify-str ("true" :true) ("false" :false))
+             recs      (find-records-in-file from-file)
+             sel-recs  (if (erl/== rec-atom :all) recs (lists/filter (fn (x) (erl/== (jxl/hd x) rec-atom)) recs)))
+        (file/write-file to-file (lists/flatten (lists/map (fn (x) (make-joxa-record x joxify)) sel-recs)))))
+    (wrong-arglist
+      (io/format "Usage: ./jxautorec <hrl-file> <joxa-file> <record-name|all> <joxify>~n"))))
 
