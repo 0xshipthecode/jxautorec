@@ -61,7 +61,7 @@
 (defn+ main(lst)
   (case lst
     ([from-file to-file rec-name-or-all joxify-str]
-      (let* (rec-atom  (case rec-name-or-all ("all" :all) (rec-name [(erl/list-to-atom rec-name)]))
+      (let* (rec-atom  (case rec-name-or-all ("all" :all) (rec-name (erl/list-to-atom rec-name)))
              joxify    (case joxify-str ("true" :true) ("false" :false))
              recs      (find-records-in-file from-file)
              sel-recs  (if (erl/== rec-atom :all) recs (lists/filter (fn (x) (erl/== (jxl/hd x) rec-atom)) recs)))
