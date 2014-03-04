@@ -7,7 +7,7 @@ Uses erl\_scan to scan records in erlang .hrl files and generates joxa record de
 
 Please define ````JOXA_DIR```` to point to your joxa installation and then simply
 
-    make
+    JOXA_HOME=<joxa installation directory> make
 
 This will build ````jxautorec```` escript executable in the project directory.
 
