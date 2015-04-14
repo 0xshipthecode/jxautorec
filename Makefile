@@ -16,7 +16,7 @@ BEAMFILES= \
 
 
 ebin/%.beam: src/%.jxa
-	joxa -p ebin -o ebin -c $<
+	$(JOXA_HOME)/joxa -p ebin -o ebin -c $<
 
 
 jxautorec: $(BEAMFILES)
